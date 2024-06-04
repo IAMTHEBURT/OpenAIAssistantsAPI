@@ -287,6 +287,7 @@ public class AssistantsAPI: NSObject, URLSessionDataDelegate {
                     print("Run completed: \(data)")
                 case let .failure(error):
                     print("Run failed: \(error)")
+                    completion(.failure(error))
                 }
             case let .messageDelta(message):
                 guard let content = message.delta.content.first else { return }

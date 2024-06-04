@@ -15,17 +15,28 @@ class StreamDelegate: NSObject, URLSessionDataDelegate {
     func urlSession(_: URLSession, dataTask _: URLSessionDataTask, didReceive data: Data) {
         let responseString = String(data: data, encoding: .utf8) ?? ""
         receivedData.append(data)
-        responseString.enumerateLines { line, _ in
-            if line.hasPrefix("event: ") {
-                self.currentEvent = line.replacingOccurrences(of: "event: ", with: "")
-            } else if line.hasPrefix("data: ") {
-                let jsonString = line.replacingOccurrences(of: "data: ", with: "")
-                guard let jsonData = jsonString.data(using: .utf8) else { return }
-                self.handleEvent(eventType: self.currentEvent, data: jsonData)
+        
+        if responseString.contains("\"error\":") {
+            do {
+                let errorResponse = try JSONDecoder().decode(ErrorResponse.self, from: data)
+                let errorMessage = errorResponse.error.message
+                onEvent?(.requestCompleted(.failure(.requestFailed(message: errorMessage))))
+            } catch {
+                onEvent?(.requestCompleted(.failure(.requestFailed(message: "Failed to decode error"))))
+            }
+        } else {
+            responseString.enumerateLines { line, _ in
+                if line.hasPrefix("event: ") {
+                    self.currentEvent = line.replacingOccurrences(of: "event: ", with: "")
+                } else if line.hasPrefix("data: ") {
+                    let jsonString = line.replacingOccurrences(of: "data: ", with: "")
+                    guard let jsonData = jsonString.data(using: .utf8) else { return }
+                    self.handleEvent(eventType: self.currentEvent, data: jsonData)
+                }
             }
         }
     }
-
+    
     func urlSession(_ session: URLSession, task _: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
             onEvent?(.requestCompleted(.failure(.requestFailed(message: "Error"))))
@@ -93,4 +104,15 @@ enum StreamEvent {
     case runStepInProgress(RunStep)
     case runStepCompleted(RunStep)
     case requestCompleted(Result<Data, AssistantsAPIError>)
+}
+
+struct ErrorResponse: Codable {
+    let error: ErrorDetail
+}
+
+struct ErrorDetail: Codable {
+    let message: String
+    let type: String?
+    let param: String?
+    let code: String?
 }
