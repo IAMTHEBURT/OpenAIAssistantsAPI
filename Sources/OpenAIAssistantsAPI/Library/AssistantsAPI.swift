@@ -1,11 +1,12 @@
 //
 //  AssistantsAPI.swift
-//  CooksMate
+//  OpenAIAssistantsAPI
 //
 //  Created by Ivan Lvov on 23.05.2024.
 //
 
 import Foundation
+import AVFoundation
 
 public enum AssistantsAPIError: Error {
     case invalidURL
@@ -21,14 +22,16 @@ public class AssistantsAPI: NSObject, URLSessionDataDelegate {
     private let apiKey: String
     private let session: URLSession
     private var urlSession: URLSession!
+    public static var debugLoggingEnabled: Bool = true
 
-    public init(baseUrl: String = "https://api.openai.com/v1", apiKey: String) {
+    public init(baseUrl: String = "https://api.openai.com/v1", apiKey: String, enableDebugLogging: Bool = true) {
         baseURL = baseUrl
         self.apiKey = apiKey
         session = URLSession.shared
         super.init()
         let configuration = URLSessionConfiguration.default
         urlSession = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        AssistantsLogger.debugLoggingEnabled = enableDebugLogging
     }
 
     public func createThread(
@@ -207,6 +210,8 @@ public class AssistantsAPI: NSObject, URLSessionDataDelegate {
         max_prompt_tokens: Int? = nil,
         max_completion_tokens: Int? = nil,
         onPartialResponse: @escaping (String) -> Void,
+        onSessionClosed: ((Result<Data, AssistantsAPIError>) -> Void)? = nil,
+        onMessageCompleted: ((String) -> Void)? = nil,
         completion: @escaping (Result<Run, AssistantsAPIError>) -> Void
     ) {
         guard let url = URL(string: "\(baseURL)/threads/\(thread.id)/runs") else {
@@ -282,24 +287,22 @@ public class AssistantsAPI: NSObject, URLSessionDataDelegate {
         streamDelegate.onEvent = { event in
             switch event {
             case let .requestCompleted(result):
-                switch result {
-                case let .success(data):
-                    print("Run completed: \(data)")
-                case let .failure(error):
-                    print("Run failed: \(error)")
-                    completion(.failure(error))
-                }
+                onSessionClosed?(result)
             case let .messageDelta(message):
                 guard let content = message.delta.content.first else { return }
                 onPartialResponse(content.text.value)
+            case let .messageCompleted(message):
+                guard let content = message.content.first else { return }
+                onMessageCompleted?(content.text.value)
             case let .runCompleted(run):
                 completion(.success(run))
             default:
-                print("DEFAULT \(event.self)")
+                AssistantsLogger.log("DEFAULT \(event.self)")
             }
         }
 
         let session = URLSession(configuration: .default, delegate: streamDelegate, delegateQueue: nil)
+        streamDelegate.session = session
         let task = session.dataTask(with: request)
         task.resume()
     }
@@ -453,13 +456,13 @@ public class AssistantsAPI: NSObject, URLSessionDataDelegate {
 // MARK: - AUDIO
 
 public extension AssistantsAPI {
-    func createSpeech(
+    public func createSpeech(
         model: String = "tts-1",
         input: String,
         voice: Voice,
-        responseFormat: String? = nil,
+        responseFormat: String = "mp3",
         speed: Double? = nil,
-        completion: @escaping (Result<Data, AssistantsAPIError>) -> Void
+        completion: @escaping (Result<AudioObject, AssistantsAPIError>) -> Void
     ) {
         guard let url = URL(string: "\(baseURL)/audio/speech") else {
             completion(.failure(.invalidURL))
@@ -475,11 +478,9 @@ public extension AssistantsAPI {
             "model": model,
             "input": input,
             "voice": voice.rawValue,
+            "response_format": responseFormat
         ]
 
-        if let responseFormat = responseFormat {
-            speechRequest["response_format"] = responseFormat
-        }
         if let speed = speed {
             speechRequest["speed"] = speed
         }
@@ -499,8 +500,7 @@ public extension AssistantsAPI {
             }
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                let serverMessage = "Invalid server response"
-                completion(.failure(.invalidResponse(message: serverMessage)))
+                completion(.failure(.invalidResponse(message: "Invalid server response")))
                 return
             }
 
@@ -515,8 +515,121 @@ public extension AssistantsAPI {
                 return
             }
 
-            completion(.success(responseData))
+            do {
+                let audioPlayer = try AVAudioPlayer(data: responseData)
+                let audioResult = AudioSpeechResult(audio: responseData)
+                let audioObject = AudioObject(
+                    prompt: input,
+                    audioPlayer: audioPlayer,
+                    originResponse: audioResult,
+                    format: responseFormat
+                )
+                completion(.success(audioObject))
+            } catch {
+                completion(.failure(.requestFailed(message: "Failed to create AVAudioPlayer: \(error.localizedDescription)")))
+            }
         }.resume()
+    }
+
+    @available(iOS 13.0, *)
+    public func createSpeechStreamAsync(
+        model: String = "tts-1",
+        input: String,
+        voice: Voice,
+        speed: Double = 1.0,
+        responseFormat: String = "mp3"
+    ) -> AsyncThrowingStream<AudioSpeechResult, Error> {
+        var task: URLSessionDataTask? = nil
+
+        return AsyncThrowingStream { continuation in
+            guard let url = URL(string: "\(baseURL)/audio/speech") else {
+                continuation.finish(throwing: AssistantsAPIError.invalidURL)
+                return
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+            let body: [String: Any] = [
+                "model": model,
+                "input": input,
+                "voice": voice.rawValue,
+                "response_format": responseFormat,
+                "speed": speed
+            ]
+
+            do {
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            } catch {
+                continuation.finish(throwing: AssistantsAPIError.serializationError)
+                return
+            }
+
+            let delegate = AudioStreamDelegate(
+                onData: { chunk in
+                    continuation.yield(AudioSpeechResult(audio: chunk))
+                },
+                onComplete: { result in
+                    switch result {
+                    case .success:
+                        continuation.finish()
+                    case .failure(let error):
+                        continuation.finish(throwing: error)
+                    }
+                }
+            )
+
+            let streamSession = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+            task = streamSession.dataTask(with: request)
+            task?.resume()
+
+            continuation.onTermination = { _ in
+                task?.cancel()
+            }
+        }
+    }
+
+
+    public func createSpeechStream(
+        model: String = "tts-1",
+        input: String,
+        voice: Voice,
+        speed: Double? = nil,
+        responseFormat: String = "pcm", // opus
+        onData: @escaping (Data) -> Void,
+        onComplete: @escaping (Result<Void, AssistantsAPIError>) -> Void
+    ) {
+        guard let url = URL(string: "\(baseURL)/audio/speech") else {
+            onComplete(.failure(.invalidURL))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "model": model,
+            "input": input,
+            "voice": voice.rawValue,
+            "response_format": responseFormat,
+            "speed": speed ?? 1.0
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            onComplete(.failure(.serializationError))
+            return
+        }
+
+        let delegate = AudioStreamDelegate(onData: onData, onComplete: onComplete)
+        let streamSession = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        let task = streamSession.dataTask(with: request)
+        task.resume()
     }
 
     func createTranscription(
@@ -593,5 +706,15 @@ public extension AssistantsAPI {
                 completion(.failure(.decodingFailed(message: decodingErrorMessage)))
             }
         }.resume()
+    }
+}
+
+public enum AssistantsLogger {
+    public static var debugLoggingEnabled: Bool = true
+
+    public static func log(_ message: @autoclosure () -> String) {
+        if debugLoggingEnabled {
+            print("🔹[AssistantsAPI] \(message())")
+        }
     }
 }

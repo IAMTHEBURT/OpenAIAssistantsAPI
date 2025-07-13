@@ -1,6 +1,6 @@
 //
 //  Run.swift
-//  CooksMate
+//  OpenAIAssistantsAPI
 //
 //  Created by Ivan Lvov on 24.05.2024.
 //
@@ -33,7 +33,6 @@ public struct Run: Codable {
     public let max_completion_tokens: Int?
     public let truncation_strategy: TruncationStrategy
     public let tool_choice: ToolChoice
-    public let response_format: ResponseFormat
 }
 
 public enum RunStatus: String, Codable {

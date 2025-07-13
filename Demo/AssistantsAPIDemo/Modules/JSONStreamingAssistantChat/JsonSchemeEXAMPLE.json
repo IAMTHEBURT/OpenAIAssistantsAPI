@@ -1,0 +1,99 @@
+// JSON SCHEME FOR ASSISTAND ID asst_HEmtHqHuZjsKQKYh0UdiyDvX
+{
+  "name": "message_schema",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "messages": {
+        "type": "array",
+        "description": "Array of message elements, each can be one of the specified types.",
+        "items": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "UUID string"
+                },
+                "speak": {
+                  "type": "string",
+                  "description": "Speakable part of the message"
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Plain text message."
+                }
+              },
+              "required": [
+                "id",
+                "speak",
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "UUID string"
+                },
+                "speak": {
+                  "type": "string",
+                  "description": "Speakable part of the message"
+                },
+                "riddle": {
+                  "type": "string",
+                  "description": "The riddle text."
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Answer options."
+                }
+              },
+              "required": [
+                "id",
+                "speak",
+                "riddle",
+                "options"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "UUID string"
+                },
+                "speak": {
+                  "type": "string",
+                  "description": "Speakable part of the message"
+                },
+                "explanation": {
+                  "type": "string",
+                  "description": "Explanation of the choice made."
+                }
+              },
+              "required": [
+                "id",
+                "speak",
+                "explanation"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      }
+    },
+    "required": [
+      "messages"
+    ],
+    "additionalProperties": false
+  }
+}
