@@ -1,6 +1,6 @@
 //
 //  Content.swift
-//  CooksMate
+//  OpenAIAssistantsAPI
 //
 //  Created by Ivan Lvov on 24.05.2024.
 //
@@ -52,32 +52,4 @@ public struct Attachment: Codable, Hashable {
 
     public let file_id: String
     public let tools: [Tool]
-}
-
-public enum ResponseFormat: Codable {
-    case auto
-    case jsonObject
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let stringValue = try container.decode(String.self)
-        switch stringValue {
-        case "auto":
-            self = .auto
-        case "json_object":
-            self = .jsonObject
-        default:
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid response format")
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .auto:
-            try container.encode("auto")
-        case .jsonObject:
-            try container.encode("json_object")
-        }
-    }
 }

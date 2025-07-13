@@ -1,6 +1,6 @@
 //
 //  Transcription.swift
-//  CooksMate
+//  OpenAIAssistantsAPI
 //
 //  Created by Ivan Lvov on 02.06.2024.
 //
