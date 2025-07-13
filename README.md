@@ -19,7 +19,7 @@ To install the package, add the following dependency to your `Package.swift` fil
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/IAMTHEBURT/OpenAIAssistantsAPI.git", from: "0.1.0")
+    .package(url: "https://github.com/iamtheburt/OpenAIAssistantsAPI", from: "0.1.0")
 ]
 ```
 
@@ -42,7 +42,7 @@ To create a new assistant:
 
 1. Visit [OpenAI Assistants](https://platform.openai.com/assistants).
 2. Follow the prompts to create a new assistant.
-3. Once created, note the **Assistant ID**; you will need this ID to interact with the assistant through the this ID
+3. Once created, note the **Assistant ID**; you will need this ID to interact with the assistant through the 
 
 4. **Create a New Thread**
 

@@ -1,6 +1,6 @@
 //
 //  AssistantsMessage.swift
-//  CooksMate
+//  OpenAIAssistantsAPI
 //
 //  Created by Ivan Lvov on 26.05.2024.
 //
